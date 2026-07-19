@@ -26,6 +26,8 @@ namespace Geo.Core
 
         private ID3D11VertexShader _vertexShader;
         private ID3D11PixelShader _pixelShader;
+        private ID3D11VertexShader _spaceVertexShader;
+        private ID3D11PixelShader _spacePixelShader;
         private ID3D11InputLayout _inputLayout;
 
         private ID3D11Buffer _constantBuffer;
@@ -219,26 +221,31 @@ namespace Geo.Core
             uint stride = (uint)System.Runtime.InteropServices.Marshal.SizeOf<VertexPositionTexture>();
             uint offset = 0;
 
-            // Привязываем буферы геометрии
+            // 1. Привязываем буферы геометрии сферы к конвейеру
             _context.IASetVertexBuffers(0, 1, new[] { vertexBuffer }, new[] { stride }, new[] { offset });
             _context.IASetIndexBuffer(indexBuffer, Vortice.DXGI.Format.R32_UInt, 0);
             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
 
-            // Включаем формат вершин и шейдеры
+            // 2. Включаем формат вершин и шейдеры самой планеты Земля
             _context.IASetInputLayout(_inputLayout);
             _context.VSSetShader(_vertexShader);
             _context.PSSetShader(_pixelShader);
 
-            // КРИТИЧЕСКИ ВАЖНО: Передаем текстуру Земли в слот 0 (register(t0) в HLSL)
+            // 3. Передаем текстуру Земли и сэмплер сглаживания в Пиксельный шейдер (слоты t0 и s0)
             _context.PSSetShaderResource(0, textureView);
-
-            // Передаем сэмплер сглаживания в слот 0 (register(s0) в HLSL)
             _context.PSSetSampler(0, _samplerState);
 
-            // Активируем двухстороннюю отрисовку граней и тест глубины
+            // 4. Активируем двухстороннюю отрисовку треугольников сферы
             _context.RSSetState(_rasterizerState);
-            _context.OMSetDepthStencilState(_depthStencilState);
+
+            // 5. КРИТИЧЕСКИ ВАЖНО ДЛЯ ХОРОШЕЙ АРХИТЕКТУРЫ:
+            // Связываем буфер цвета И буфер глубины вместе для отрисовки 3D-сферы
+            _context.OMSetRenderTargets(_renderTargetView, _depthStencilView);
+
+            // Включаем стандартный 3D тест глубины (чтобы передние материки перекрывали задние)
+            _context.OMSetDepthStencilState(_depthStencilState, 0);
         }
+
 
         public void EndFrame()
         {
@@ -251,34 +258,51 @@ namespace Geo.Core
             _context.DrawIndexed((uint)indexCount, 0, 0);
         }
 
+        public void DrawBackground()
+        {
+            // Отключаем привязку буфера глубины для рендеринга фона, 
+            // чтобы космос не забивал Z-буфер своими пикселями
+            _context.OMSetRenderTargets(_renderTargetView, null);
+            _context.OMSetDepthStencilState(null, 0);
+
+            // Включаем шейдеры КОСМОСА
+            _context.VSSetShader(_spaceVertexShader);
+            _context.PSSetShader(_spacePixelShader);
+
+            _context.IASetInputLayout(null);
+            _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+
+            // Рисуем фоновый прямоугольник
+            _context.Draw(4, 0);
+        }
+
         public void LoadShaders()
         {
-            // 1. Компилируем Вершинный Шейдер из текстового файла
-            // "main" — это имя функции внутри .hlsl файла, "vs_5_0" — версия шейдеров для DX11
+            // Земля
             Compiler.CompileFromFile("Shaders/VertexShader.hlsl", "main", "vs_5_0", out Blob vsBlob, out _);
             _vertexShader = _device.CreateVertexShader(vsBlob.AsBytes());
-
-            // 2. Компилируем Пиксельный Шейдер из текстового файла
             Compiler.CompileFromFile("Shaders/PixelShader.hlsl", "main", "ps_5_0", out Blob psBlob, out _);
             _pixelShader = _device.CreatePixelShader(psBlob.AsBytes());
 
-            // 3. Описываем формат вершины (Input Layout) для видеокарты
-            // Мы должны строго сопоставить поля нашей C# структуры VertexPositionTexture с HLSL
+            // Космос (Новое)
+            Compiler.CompileFromFile("Shaders/SpaceVertexShader.hlsl", "main", "vs_5_0", out Blob spaceVsBlob, out _);
+            _spaceVertexShader = _device.CreateVertexShader(spaceVsBlob.AsBytes());
+            Compiler.CompileFromFile("Shaders/SpacePixelShader.hlsl", "main", "ps_5_0", out Blob spacePsBlob, out _);
+            _spacePixelShader = _device.CreatePixelShader(spacePsBlob.AsBytes());
+
+            // Layout привязываем к вершинному шейдеру Земли, так как у космоса нет Layout (мы рисуем его без буфера вершин)
             InputElementDescription[] inputElements = new InputElementDescription[]
             {
-                // Позиция: 3 числа float (R32G32B32_Float), семантика "POSITION"
                 new InputElementDescription("POSITION", 0, Vortice.DXGI.Format.R32G32B32_Float, 0, 0),
-                // Текстурные координаты: 2 числа float (R32G32_Float), семантика "TEXCOORD"
-                // AlignedByteOffset = 12, так как перед ней идут 3 float по 4 байта каждый (3 * 4 = 12)
                 new InputElementDescription("TEXCOORD", 0, Vortice.DXGI.Format.R32G32_Float, 12, 0)
             };
-
-            // Создаем Input Layout, связывая описание формата со скомпилированным вершинным шейдером
             _inputLayout = _device.CreateInputLayout(inputElements, vsBlob.AsBytes());
 
             // Освобождаем временные буферы компиляции из оперативной памяти
             vsBlob.Dispose();
             psBlob.Dispose();
+            spaceVsBlob.Dispose();
+            spacePsBlob.Dispose();
 
             Console.WriteLine("[Engine]: Шейдеры успешно скомпилированы и загружены в GPU.");
         }

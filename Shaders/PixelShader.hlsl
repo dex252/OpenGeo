@@ -1,6 +1,5 @@
 // Принимаем текстуру Земли из C# (зарегистрирована в слоте t0)
 Texture2D EarthTexture : register(t0);
-
 // Принимаем настройки сглаживания (зарегистрированы в слоте s0)
 SamplerState TextureSampler : register(s0);
 
@@ -12,9 +11,5 @@ struct PS_INPUT
 
 float4 main(PS_INPUT input) : SV_TARGET
 {
-    // Метод .Sample берет цвет пикселя из текстуры EarthTexture, 
-    // сглаживает его через TextureSampler и накладывает строго по координатам TexCoord
-    float4 color = EarthTexture.Sample(TextureSampler, input.TexCoord);
-
-    return color;
+    return EarthTexture.Sample(TextureSampler, input.TexCoord);
 }

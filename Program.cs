@@ -97,9 +97,16 @@ class Program
             // 3. Рендеринг кадра
             engine.BeginFrame();
 
+            // 4. Рисуем космос (он сам знает, какие шейдеры включить)
+            engine.DrawBackground();
+
+            // 5. Рисуем Землю
             if (planetVertexBuffer != null && planetIndexBuffer != null && earthTexture != null)
             {
+                // Отправляем чистую матрицу WVP
                 engine.UpdateTransform(wvpTransposed);
+
+                // Метод BindMesh сам включит шейдеры Земли, текстуру и буферы
                 engine.BindMesh(planetVertexBuffer, planetIndexBuffer, earthTexture.ResourceView);
                 engine.Draw(planetIndexCount);
             }

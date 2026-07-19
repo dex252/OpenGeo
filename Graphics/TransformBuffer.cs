@@ -3,9 +3,9 @@ using System.Runtime.InteropServices;
 
 namespace Geo.Graphics
 {
-    [StructLayout(LayoutKind.Sequential)]
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct TransformBuffer
     {
-        public Matrix4x4 WorldViewProj; // Матрица трансформации 4х4
+        public System.Numerics.Matrix4x4 WorldViewProj; // Чистые 64 байта
     }
 }

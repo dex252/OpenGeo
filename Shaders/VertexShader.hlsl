@@ -1,4 +1,3 @@
-// –егистрируем буфер трансформации в слоте b0
 cbuffer TransformBuffer : register(b0)
 {
     matrix worldViewProj;
@@ -19,13 +18,7 @@ struct PS_INPUT
 PS_INPUT main(VS_INPUT input)
 {
     PS_INPUT output;
-
-    // ”множаем 3D-координату вершины на матрицу WVP
-    // ћетод mul Ч это встроенное в HLSL матричное умножение
     output.Position = mul(float4(input.Position, 1.0f), worldViewProj);
-
-    // »нвертируем координату X (она же U), чтобы исправить зеркальность карты мира
     output.TexCoord = float2(1.0f - input.TexCoord.x, input.TexCoord.y);
-
     return output;
 }
