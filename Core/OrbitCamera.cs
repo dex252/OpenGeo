@@ -81,9 +81,13 @@ namespace Geo.Core
             UpdateMatrices();
         }
 
-        public void Update()
+        public void Update(IWindow window)
         {
-            // Метод для вызова каждый кадр (пересчитывает положение камеры при движении)
+            // Пересчитываем соотношение сторон на основе актуальных размеров окна
+            float aspectRatio = (float)window.Size.X / window.Size.Y;
+            ProjectionMatrix = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 4.0f, aspectRatio, 0.1f, 100.0f);
+
+            // Пересчитываем положение камеры
             UpdateMatrices();
         }
 

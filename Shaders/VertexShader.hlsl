@@ -24,8 +24,8 @@ PS_INPUT main(VS_INPUT input)
     // Метод mul — это встроенное в HLSL матричное умножение
     output.Position = mul(float4(input.Position, 1.0f), worldViewProj);
 
-    // Пробрасываем текстурные координаты
-    output.TexCoord = input.TexCoord;
+    // Инвертируем координату X (она же U), чтобы исправить зеркальность карты мира
+    output.TexCoord = float2(1.0f - input.TexCoord.x, input.TexCoord.y);
 
     return output;
 }

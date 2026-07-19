@@ -39,12 +39,23 @@ namespace Geo.Core
             var options = WindowOptions.Default;
             options.Size = new Silk.NET.Maths.Vector2D<int>(width, height);
             options.Title = title;
-            // Отключаем встроенную графику (OpenGL), так как будем инициализировать DirectX вручную
             options.API = GraphicsAPI.None;
-            options.WindowBorder = WindowBorder.Fixed;
+
+            // МЕНЯЕМ ЭТИ СТРОКИ:
+            options.WindowBorder = WindowBorder.Resizable; // Разрешаем растягивать окно мышкой
+            options.WindowState = WindowState.Normal;      // По умолчанию окно открывается в обычном режиме
+
+            // Если вы хотите запустить игру СРАЗУ на весь экран (Fullscreen), раскомментируйте строку ниже:
+            // options.WindowState = WindowState.Fullscreen; 
 
             _window = Silk.NET.Windowing.Window.Create(options);
             _window.Initialize();
+
+            //Связываем событие изменения размера окна Silk.NET с нашим методом DirectX
+            _window.Resize += (newSize) =>
+            {
+                this.Resize(newSize.X, newSize.Y);
+            };
 
             // 2. Инициализация DirectX 11
             // Безопасно забираем нативный HWND окна Windows через встроенный интерфейс
@@ -270,6 +281,49 @@ namespace Geo.Core
             psBlob.Dispose();
 
             Console.WriteLine("[Engine]: Шейдеры успешно скомпилированы и загружены в GPU.");
+        }
+
+        public void Resize(int newWidth, int height)
+        {
+            // Если размеры нулевые (например, игру свернули в трей), ничего не делаем
+            if (newWidth == 0 || height == 0) return;
+
+            // 1. Обязательно освобождаем старые привязки и буферы (иначе DirectX выдаст ошибку)
+            _context.OMSetRenderTargets((ID3D11RenderTargetView)null, null);
+            _renderTargetView?.Dispose();
+            _depthStencilView?.Dispose();
+
+            // 2. Приказываем SwapChain изменить размер внутреннего буфера под новое окно
+            _swapChain.ResizeBuffers(1, (uint)newWidth, (uint)height, Format.R8G8B8A8_UNorm, SwapChainFlags.None).CheckError();
+
+            // 3. Пересоздаем RenderTargetView для нового размера
+            using (ID3D11Texture2D backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0))
+            {
+                _renderTargetView = _device.CreateRenderTargetView(backBuffer);
+            }
+
+            // 4. Пересоздаем Буфер Глубины (Z-Buffer) под новое разрешение
+            var depthTexDesc = new Texture2DDescription
+            {
+                Width = (uint)newWidth,
+                Height = (uint)height,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = Format.D24_UNorm_S8_UInt,
+                SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Default,
+                BindFlags = BindFlags.DepthStencil
+            };
+
+            using (ID3D11Texture2D depthTexture = _device.CreateTexture2D(depthTexDesc))
+            {
+                _depthStencilView = _device.CreateDepthStencilView(depthTexture);
+            }
+
+            // 5. Обновляем область отрисовки (Viewport)
+            _context.RSSetViewport(new Viewport(0, 0, newWidth, height));
+
+            Console.WriteLine($"[Engine]: Разрешение успешно изменено на {newWidth}x{height}");
         }
 
         public void Dispose()

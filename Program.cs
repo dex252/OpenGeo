@@ -87,7 +87,7 @@ class Program
             lastTimeMs = currentTimeMs;
 
             // 1. Обновляем состояние камеры (пересчет матриц, если мышь двигалась)
-            camera.Update();
+            camera.Update(engine.Window);
 
             // 2. Рассчитываем итоговую матрицу (Земля неподвижна Identity, камеры берутся из класса)
             Matrix4x4 world = Matrix4x4.Identity;
