@@ -1,11 +1,15 @@
-// Структура на входе (из нашей структуры VertexPositionTexture в C#)
+// Регистрируем буфер трансформации в слоте b0
+cbuffer TransformBuffer : register(b0)
+{
+    matrix worldViewProj;
+};
+
 struct VS_INPUT
 {
     float3 Position : POSITION;
     float2 TexCoord : TEXCOORD;
 };
 
-// Структура на выходе (передается в пиксельный шейдер)
 struct PS_INPUT
 {
     float4 Position : SV_POSITION;
@@ -16,11 +20,11 @@ PS_INPUT main(VS_INPUT input)
 {
     PS_INPUT output;
 
-    // Переводим 3D-координаты в 4D-вектор для DirectX.
-    // Делим X и Y на 2.5, чтобы сфера уменьшилась и полностью влезла в экран.
-    output.Position = float4(input.Position.x / 2.5f, input.Position.y / 2.5f, input.Position.z, 1.0f);
+    // Умножаем 3D-координату вершины на матрицу WVP
+    // Метод mul — это встроенное в HLSL матричное умножение
+    output.Position = mul(float4(input.Position, 1.0f), worldViewProj);
 
-    // Просто пробрасываем текстурные координаты дальше
+    // Пробрасываем текстурные координаты
     output.TexCoord = input.TexCoord;
 
     return output;

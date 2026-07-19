@@ -12,6 +12,12 @@ namespace Geo.Core
 {
     public class GraphicsEngine : IDisposable
     {
+        private ID3D11RasterizerState _rasterizerState;
+        private ID3D11DepthStencilState _depthStencilState;
+        private ID3D11DepthStencilView _depthStencilView;
+        
+        private ID3D11SamplerState _samplerState;
+
         private IWindow _window;
         private ID3D11Device _device;
         private ID3D11DeviceContext _context;
@@ -21,6 +27,8 @@ namespace Geo.Core
         private ID3D11VertexShader _vertexShader;
         private ID3D11PixelShader _pixelShader;
         private ID3D11InputLayout _inputLayout;
+
+        private ID3D11Buffer _constantBuffer;
 
         public IWindow Window => _window;
         public ID3D11Device Device => _device;
@@ -83,6 +91,58 @@ namespace Geo.Core
 
             // Настраиваем область отрисовки (Viewport) под размер окна
             _context.RSSetViewport(new Viewport(0, 0, width, height));
+
+            var cbDesc = new BufferDescription(64, BindFlags.ConstantBuffer); // 64 байта под матрицу 4х4
+            _constantBuffer = _device.CreateBuffer(cbDesc);
+
+            // 1. Настройка двухсторонней отрисовки
+            var rasterizerDesc = new RasterizerDescription
+            {
+                CullMode = CullMode.None, // Отключаем отсечение, чтобы видеть переднюю стенку
+                FillMode = FillMode.Solid
+            };
+            _rasterizerState = _device.CreateRasterizerState(rasterizerDesc);
+
+            // 2. Включаем тест глубины
+            var depthStencilDesc = new DepthStencilDescription
+            {
+                DepthEnable = true,
+                DepthWriteMask = DepthWriteMask.All,
+                DepthFunc = ComparisonFunction.Less
+            };
+            _depthStencilState = _device.CreateDepthStencilState(depthStencilDesc);
+
+            // 3. Создаем сам буфер глубины под размер окна
+            var depthTexDesc = new Texture2DDescription
+            {
+                Width = (uint)width,
+                Height = (uint)height,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = Format.D24_UNorm_S8_UInt, // Формат для теста глубины
+                SampleDescription = new SampleDescription(1, 0), // Без сглаживания (должно совпадать со SwapChain)
+                Usage = ResourceUsage.Default,
+                BindFlags = BindFlags.DepthStencil,
+                CPUAccessFlags = CpuAccessFlags.None,
+                MiscFlags = ResourceOptionFlags.None
+            };
+
+            // Создаем сэмплер для плавной фильтрации текстуры Земли
+            var samplerDesc = new SamplerDescription
+            {
+                Filter = Filter.MinMagMipLinear, // Линейное сглаживание пикселей
+                AddressU = TextureAddressMode.Wrap, // Повторять текстуру по горизонтали (чтобы глобус бесшовно сходился)
+                AddressV = TextureAddressMode.Clamp, // Зажимать на полюсах, чтобы не было швов
+                AddressW = TextureAddressMode.Wrap
+            };
+
+            _samplerState = _device.CreateSamplerState(samplerDesc);
+
+            using (ID3D11Texture2D depthTexture = _device.CreateTexture2D(depthTexDesc))
+            {
+                _depthStencilView = _device.CreateDepthStencilView(depthTexture);
+            }
+
             Console.WriteLine("[Engine]: Системы окна и DirectX 11 успешно запущены.");
         }
 
@@ -90,6 +150,14 @@ namespace Geo.Core
         public bool ShouldClose()
         {
             return _window.IsClosing;
+        }
+
+        public void UpdateTransform(System.Numerics.Matrix4x4 matrix)
+        {
+            // Обновляем данные буфера на видеокарте
+            _context.UpdateSubresource(matrix, _constantBuffer);
+            // Привязываем буфер к Вертексному Шейдеру в слот 0
+            _context.VSSetConstantBuffer(0, _constantBuffer);
         }
 
         // Метод создания буферов на основе переданной геометрии сферы
@@ -125,14 +193,19 @@ namespace Geo.Core
 
         public void BeginFrame()
         {
-            var clearColor = new Color4(0.01f, 0.01f, 0.03f, 1.0f); // Космический цвет фона
+            var clearColor = new Color4(0.01f, 0.01f, 0.03f, 1.0f);
             _context.ClearRenderTargetView(_renderTargetView, clearColor);
-            _context.OMSetRenderTargets(_renderTargetView);
+
+            // Очищаем Z-буфер перед рисованием нового кадра
+            _context.ClearDepthStencilView(_depthStencilView, DepthStencilClearFlags.Depth, 1.0f, 0);
+
+            // Связываем вместе буфер цвета и буфер глубины
+            _context.OMSetRenderTargets(_renderTargetView, _depthStencilView);
         }
 
-        public void BindMesh(ID3D11Buffer vertexBuffer, ID3D11Buffer indexBuffer, ID3D11ShaderResourceView resourceView)
+        public void BindMesh(ID3D11Buffer vertexBuffer, ID3D11Buffer indexBuffer, ID3D11ShaderResourceView textureView)
         {
-            uint stride = (uint)Marshal.SizeOf<VertexPositionTexture>();
+            uint stride = (uint)System.Runtime.InteropServices.Marshal.SizeOf<VertexPositionTexture>();
             uint offset = 0;
 
             // Привязываем буферы геометрии
@@ -140,10 +213,20 @@ namespace Geo.Core
             _context.IASetIndexBuffer(indexBuffer, Vortice.DXGI.Format.R32_UInt, 0);
             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
 
-            // НОВОЕ: Включаем шейдеры и формат вершин на конвейере видеокарты
+            // Включаем формат вершин и шейдеры
             _context.IASetInputLayout(_inputLayout);
             _context.VSSetShader(_vertexShader);
             _context.PSSetShader(_pixelShader);
+
+            // КРИТИЧЕСКИ ВАЖНО: Передаем текстуру Земли в слот 0 (register(t0) в HLSL)
+            _context.PSSetShaderResource(0, textureView);
+
+            // Передаем сэмплер сглаживания в слот 0 (register(s0) в HLSL)
+            _context.PSSetSampler(0, _samplerState);
+
+            // Активируем двухстороннюю отрисовку граней и тест глубины
+            _context.RSSetState(_rasterizerState);
+            _context.OMSetDepthStencilState(_depthStencilState);
         }
 
         public void EndFrame()
@@ -202,6 +285,13 @@ namespace Geo.Core
             _device?.Dispose();
             _window?.Close();
             _window?.Dispose();
+            _constantBuffer?.Dispose();
+
+            _rasterizerState?.Dispose();
+            _depthStencilState?.Dispose();
+            _depthStencilView?.Dispose();
+            _samplerState?.Dispose();
+
             Console.WriteLine("[Engine]: Ресурсы графики очищены.");
         }
     }
