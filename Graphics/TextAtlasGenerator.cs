@@ -31,6 +31,11 @@ namespace Geo.Graphics
                     CityData targetLeader = null;
                     foreach (var leader in clusters.Keys)
                     {
+                        if (city.Country != leader.Country)
+                        {
+                            continue; // Пропускаем этого лидера, ищем дальше
+                        }
+
                         float deltaLat = city.Latitude - leader.Latitude;
                         float deltaLon = city.Longitude - leader.Longitude;
                         float distance = MathF.Sqrt(deltaLat * deltaLat + deltaLon * deltaLon);

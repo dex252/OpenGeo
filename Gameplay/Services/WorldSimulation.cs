@@ -31,9 +31,9 @@ namespace Geo.Gameplay.Services
             WorldDataSeeder.SeedCities(_cities, _planetRadius);
         }
 
-        private void AddCity(string name, float lat, float lon, int population)
+        private void AddCity(string name, float lat, float lon, int population, string country)
         {
-            var city = new CityData(name, lat, lon, _planetRadius, population);
+            var city = new CityData(name, lat, lon, _planetRadius, population, country);
             _cities.Add(city);
             Console.WriteLine($"[Симуляция]: Создан город: {name} ({lat}, {lon}) -> 3D: {city.CartesianPosition}");
         }

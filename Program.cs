@@ -184,4 +184,19 @@ class Program
         Console.WriteLine("[Система]: Работа программы успешно завершена.");
     }
 
+    /// <summary>
+    /// Перерисовать текст при геополитических изменениях
+    /// </summary>
+    public static void ForceUpdateTextLayer()
+    {
+        // 1. Процессор генерирует новую чистую 16K картинку с учетом новых стран
+        string textLayerPath = TextAtlasGenerator.GenerateCityTextLayer(worldSimulation, 16384, 8192);
+
+        // 2. Старая текстура удаляется из GPU
+        cityTextTexture?.Dispose();
+
+        // 3. Свежая актуальная карта мгновенно загружается в видеопамять
+        cityTextTexture = new Texture(engine.Device, textLayerPath);
+    }
+
 }

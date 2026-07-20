@@ -1,10 +1,11 @@
-﻿using System;
+﻿using SixLabors.Fonts;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
-using SixLabors.Fonts;
 
 namespace Geo.Gameplay.Models
 {
@@ -24,15 +25,19 @@ namespace Geo.Gameplay.Models
 
         // Параметры геополитического симулятора
         public int Population { get; set; }
+
+        public string Country { get; set; }
+
         public float Stability { get; set; } = 1.0f; // от 0.0 до 1.0
         
         private Font _cachedFont;
-        public CityData(string name, float latitude, float longitude, float sphereRadius, int population)
+        public CityData(string name, float latitude, float longitude, float sphereRadius, int population, string country)
         {
             Name = name;
             Latitude = latitude;
             Longitude = longitude;
             Population = population;
+            Country = country;
 
             // Сразу рассчитываем 3D-точку на сфере, используя наш проверенный конвертер
             // Радиус чуть-чуть увеличиваем (например, на +0.02f), чтобы маркер гарантированно не ушел под землю
