@@ -89,8 +89,8 @@ class Program
         // После создания буферов самой Земли:
         worldRenderer = new Geo.Graphics.GameWorldRenderer(engine);
 
-        // Генерируем PNG картинку с текстом под разрешение вашей карты (например, 4096х2048)
-        string textLayerPath = Geo.Graphics.TextAtlasGenerator.GenerateCityTextLayer(worldSimulation, 4096, 2048, 14.0f);
+        // Генерируем PNG картинку с текстом под разрешение вашей карты (например, 16384х8192)
+        string textLayerPath = Geo.Graphics.TextAtlasGenerator.GenerateCityTextLayer(worldSimulation, 16384, 8192);
 
         // Загружаем её в видеопамять как вторую текстуру
         cityTextTexture = new Texture(engine.Device, textLayerPath);

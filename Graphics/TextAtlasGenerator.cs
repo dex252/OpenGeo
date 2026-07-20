@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Geo.Gameplay.Models;
 using Geo.Gameplay.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -13,95 +14,161 @@ namespace Geo.Graphics
 {
     public static class TextAtlasGenerator
     {
-        static int MAX_TRY_ATTEMPS = 10;
-        static float STEP_ATTEMPS = 0.5f;
+        private static int MAX_TRY_ATTEMPS = 30;
+        private static float STEP_ATTEMPS = 1.0f;
+        private static float CLUSTER_RADIUS_DEGREES = 1.5f;
 
-        /// <summary>
-        /// Динамически генерирует слой текста, плавно подтягивая надписи вверх при наложениях.
-        /// </summary>
-        public static string GenerateCityTextLayer(WorldSimulation world, int textureWidth, int textureHeight, float fontSize = 14.0f)
+        public static string GenerateCityTextLayer(WorldSimulation world, int textureWidth, int textureHeight)
         {
-            // 1. Создаем абсолютно прозрачное изображение под разрешение карты (например, 4K)
             using (var image = new Image<Rgba32>(textureWidth, textureHeight, Color.Transparent))
             {
-                SixLabors.Fonts.Font font = SystemFonts.CreateFont("Arial", fontSize, FontStyle.Bold);
-
-                // Список для отслеживания прямоугольных зон, которые уже заняты текстом
                 var occupiedAreas = new List<RectangleF>();
+                var clusters = new Dictionary<CityData, List<CityData>>();
 
+                // --- ЭТАП 1: ГРУППИРОВКА ГОРОДОВ ПО ТАБЛИЧКАМ ---
+                foreach (var city in world.Cities)
+                {
+                    CityData targetLeader = null;
+                    foreach (var leader in clusters.Keys)
+                    {
+                        float deltaLat = city.Latitude - leader.Latitude;
+                        float deltaLon = city.Longitude - leader.Longitude;
+                        float distance = MathF.Sqrt(deltaLat * deltaLat + deltaLon * deltaLon);
+
+                        if (distance < CLUSTER_RADIUS_DEGREES)
+                        {
+                            targetLeader = leader;
+                            break;
+                        }
+                    }
+
+                    if (targetLeader == null) clusters[city] = new List<CityData> { city };
+                    else clusters[targetLeader].Add(city);
+                }
+
+                // --- ЭТАП 2: РАСЧЕТ И ОТРИСОВКА ТАБЛИЧЕК ---
                 image.Mutate(ctx =>
                 {
-                    foreach (var city in world.Cities)
+                    foreach (var kvp in clusters)
                     {
-                        // Переводим широту и долготу в пиксели текстуры
-                        float pixelX = ((city.Longitude + 180.0f) / 360.0f) * textureWidth;
-                        float pixelY = ((90.0f - city.Latitude) / 180.0f) * textureHeight;
+                        CityData leader = kvp.Key;
+                        List<CityData> groupCities = kvp.Value;
 
-                        // Начальная точка привязки текста (чуть правее и выше маркера города)
-                        float currentLabelX = pixelX + 10;
-                        float currentLabelY = pixelY - 5;
+                        float pixelX = ((leader.Longitude + 180.0f) / 360.0f) * textureWidth;
+                        float pixelY = ((90.0f - leader.Latitude) / 180.0f) * textureHeight;
 
-                        // Измеряем точные физические габариты текста в пикселях
-                        var textOptions = new TextOptions(font);
-                        FontRectangle size = TextMeasurer.MeasureAdvance(city.Name, textOptions);
+                        // Идеальный стартовый отступ для 16K карты
+                        float currentTableX = pixelX + 16;
+                        float currentTableY = pixelY - (leader.FontSize * 0.5f); // Центрируем по высоте кубика
 
-                        // Формируем ограничивающий прямоугольник (Bounding Box) для текущей надписи
-                        var currentLabelRect = new RectangleF(currentLabelX, currentLabelY, size.Width, size.Height);
+                        float totalWidth = 0;
+                        float totalHeight = 0;
 
-                        // ====================================================================
-                        // 2. АЛГОРИТМ ПЛАВНОГО СДВИГА (МАКСИМУМ 10 ПОПЫТОК ПО 0.5 ПИКСЕЛЯ)
-                        // ====================================================================
-                        int maxAttempts = MAX_TRY_ATTEMPS;
-                        int attempt = 0;
-                        bool isOverlapping = true;
-
-                        while (isOverlapping && attempt < maxAttempts)
+                        foreach (var city in groupCities)
                         {
-                            isOverlapping = false;
+                            var textOptions = new TextOptions(city.CityFont);
+                            FontRectangle size = TextMeasurer.MeasureAdvance(city.Name, textOptions);
 
-                            // Проверяем пересечение со всеми городами, которые нарисованы до нас
-                            foreach (var occupiedRect in occupiedAreas)
-                            {
-                                if (currentLabelRect.IntersectsWith(occupiedRect))
-                                {
-                                    isOverlapping = true;
-
-                                    // Плавно подтягиваем текст вверх (к северу) на 0.5 пикселя за шаг
-                                    currentLabelY -= STEP_ATTEMPS;
-
-                                    // Пересчитываем положение прямоугольника на новой высоте
-                                    currentLabelRect = new RectangleF(currentLabelX, currentLabelY, size.Width, size.Height);
-
-                                    // Прерываем foreach, чтобы начать проверку заново по всему списку занятых зон
-                                    break;
-                                }
-                            }
-
-                            attempt++;
+                            if (size.Width > totalWidth) totalWidth = size.Width;
+                            totalHeight += size.Height + 4.0f;
                         }
 
-                        // Сохраняем финальную зону в список занятых, чтобы следующие города её учитывали
-                        // Если 10 попыток не хватило, город все равно добавится в базу и нарисуется "как есть"
-                        occupiedAreas.Add(currentLabelRect);
+                        float paddingX = 6.0f;
+                        float paddingY = 4.0f;
+
+                        var tableRect = new RectangleF(
+                            currentTableX,
+                            currentTableY,
+                            totalWidth + (paddingX * 2),
+                            totalHeight + (paddingY * 2)
+                        );
 
                         // ====================================================================
-                        // 3. ОТРИСОВКА ВЫЧИСЛЕННОЙ НАДПИСИ
+                        // 3. УМНЫЙ АЛГОРИТМ УСЛОВНОГО РАСТАЛКИВАНИЯ
                         // ====================================================================
-                        var c = city.VisualColor;
-                        var textColor = Color.FromRgba((byte)(c.X * 255), (byte)(c.Y * 255), (byte)(c.Z * 255), (byte)(c.W * 255));
+                        // Если город одиночный, мы просто фиксируем его идеальную позицию у кубика
+                        if (groupCities.Count > 1)
+                        {
+                            int attempt = 0;
+                            bool isOverlapping = true;
 
-                        // Итоговая точка для вывода букв
-                        var finalPoint = new PointF(currentLabelRect.X, currentLabelRect.Y);
+                            while (isOverlapping && attempt < MAX_TRY_ATTEMPS)
+                            {
+                                isOverlapping = false;
 
-                        // Рисуем мягкую черную подложку-тень для контраста на полярном льду
-                        ctx.DrawText(city.Name, font, Color.Black, new PointF(finalPoint.X + 1.0f, finalPoint.Y + 1.0f));
+                                // Проверка А: Не накладываемся ли на чужие текстовые плашки
+                                foreach (var occupiedRect in occupiedAreas)
+                                {
+                                    if (tableRect.IntersectsWith(occupiedRect))
+                                    {
+                                        isOverlapping = true;
+                                        break;
+                                    }
+                                }
 
-                        // Рисуем основной текст уникальным цветом города
-                        ctx.DrawText(city.Name, font, textColor, finalPoint);
+                                // Проверка Б: Не накладываемся ли на 3D-тела кубиков этой группы
+                                if (!isOverlapping)
+                                {
+                                    foreach (var city in groupCities)
+                                    {
+                                        float cityX = ((city.Longitude + 180.0f) / 360.0f) * textureWidth;
+                                        float cityY = ((90.0f - city.Latitude) / 180.0f) * textureHeight;
+
+                                        // Ограничиваем радиус кубика 35 пикселями на 16K карте
+                                        float cityRadius = 35.0f;
+                                        var cityBox = new RectangleF(cityX - cityRadius, cityY - cityRadius, cityRadius * 2, cityRadius * 2);
+
+                                        if (tableRect.IntersectsWith(cityBox))
+                                        {
+                                            isOverlapping = true;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // СДВИГ: Вместо прыжков на сотни пикселей, плавно смещаем плашку вниз 
+                                // строго на 2 пикселя за шаг. Она аккуратно выползет из-под кубиков и застынет рядом!
+                                if (isOverlapping)
+                                {
+                                    currentTableX += 4.0f;
+                                    tableRect = new RectangleF(currentTableX, currentTableY, totalWidth + (paddingX * 2), totalHeight + (paddingY * 2));
+                                }
+                                else
+                                {
+                                    break;
+                                }
+
+                                attempt++;
+                            }
+                        }
+
+                        // Добавляем финальную чистую позицию
+                        occupiedAreas.Add(tableRect);
+
+                        // --- РИСУЕМ ПОЛУПРОЗРАЧНУЮ ПОДЛОЖКУ ПЛАШКИ ---
+                        var backColor = Color.FromRgba(15, 15, 15, 95);
+                        ctx.Fill(backColor, tableRect);
+                        ctx.Draw(Color.FromRgba(255, 255, 255, 25), 1.5f, tableRect);
+
+                        // --- ПОСТРОЧНАЯ ОТРИСОВКА ТЕКСТА ---
+                        float drawY = tableRect.Y + paddingY;
+
+                        foreach (var city in groupCities)
+                        {
+                            var c = city.VisualColor;
+                            var textColor = Color.FromRgba((byte)(c.X * 255), (byte)(c.Y * 255), (byte)(c.Z * 255), (byte)(c.W * 255));
+
+                            var textOptions = new TextOptions(city.CityFont);
+                            FontRectangle size = TextMeasurer.MeasureAdvance(city.Name, textOptions);
+
+                            var textPoint = new PointF(tableRect.X + paddingX, drawY);
+                            ctx.DrawText(city.Name, city.CityFont, textColor, textPoint);
+
+                            drawY += size.Height + 4.0f;
+                        }
                     }
                 });
 
-                // Экспортируем получившийся слой в папку Assets проекта
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 string projectDir = Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\"));
                 string outputPath = Path.Combine(projectDir, "Assets", "cities_text_layer.png");

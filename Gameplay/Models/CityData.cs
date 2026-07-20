@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+using SixLabors.Fonts;
 
 namespace Geo.Gameplay.Models
 {
@@ -24,7 +25,8 @@ namespace Geo.Gameplay.Models
         // Параметры геополитического симулятора
         public int Population { get; set; }
         public float Stability { get; set; } = 1.0f; // от 0.0 до 1.0
-
+        
+        private Font _cachedFont;
         public CityData(string name, float latitude, float longitude, float sphereRadius, int population)
         {
             Name = name;
@@ -35,6 +37,22 @@ namespace Geo.Gameplay.Models
             // Сразу рассчитываем 3D-точку на сфере, используя наш проверенный конвертер
             // Радиус чуть-чуть увеличиваем (например, на +0.02f), чтобы маркер гарантированно не ушел под землю
             CartesianPosition = Math.CoordinateConverter.GeoToCartesian(latitude, longitude, sphereRadius + 0.005f);
+        }
+
+        /// <summary>
+        /// Кэшированный экземпляр шрифта, созданный строго под размер этого города.
+        /// </summary>
+        public Font CityFont
+        {
+            get
+            {
+                // Паттерн Lazy Initialization: создаем шрифт только один раз при первом вызове
+                if (_cachedFont == null)
+                {
+                    _cachedFont = SystemFonts.CreateFont("Arial", FontSize, FontStyle.Bold);
+                }
+                return _cachedFont;
+            }
         }
 
         /// <summary>
@@ -62,6 +80,18 @@ namespace Geo.Gameplay.Models
             >= 1_000_000    =>      new Vector4(0.0f, 0.8f, 1.0f, 1.0f),  // Голубой
             >= 100_000      =>      new Vector4(0.0f, 1.0f, 0.0f, 1.0f),  // Зеленый (Владивосток попадет сюда)
             _               =>      new Vector4(1.0f, 1.0f, 1.0f, 1.0f)   // Белый (Крошечные поселения)
+        };
+
+        public float FontSize => Population switch
+        {
+            >= 25_000_000   => 24.0f,    // Мега-агломерации (Токио, Шанхай)
+            >= 12_500_000   => 22.0f,    // Сверхкрупные столицы (Москва)
+            >= 7_500_000    => 20.0f,    // Крупные мировые центры (Нью-Йорк)
+            >= 5_000_000    => 18.0f,    // Большие мегаполисы (Сидней, Санкт-Петербург)
+            >= 2_500_000    => 16.0f,   // Развитые региональные центры
+            >= 1_000_000    => 14.0f,    // Миллионники (Новосибирск)
+            >= 100_000      => 12.0f,   // Средние города (Владивосток, Калининград)
+            _               => 10.0f   // Малые города и поселения (Суздаль, Верхоянск)
         };
     }
 }
