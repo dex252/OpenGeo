@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Silk.NET.Windowing;       // Для IWindow и WindowOptions
 using Vortice.Direct3D;
 using Vortice.Direct3D11;       // Для ID3D11Device и контекста
@@ -26,8 +25,7 @@ namespace Geo.Core
 
         private ID3D11VertexShader _vertexShader;
         private ID3D11PixelShader _pixelShader;
-        private ID3D11VertexShader _spaceVertexShader;
-        private ID3D11PixelShader _spacePixelShader;
+
         private ID3D11InputLayout _inputLayout;
 
         private ID3D11Buffer _constantBuffer;
@@ -258,23 +256,6 @@ namespace Geo.Core
             _context.DrawIndexed((uint)indexCount, 0, 0);
         }
 
-        public void DrawBackground()
-        {
-            // Отключаем привязку буфера глубины для рендеринга фона, 
-            // чтобы космос не забивал Z-буфер своими пикселями
-            _context.OMSetRenderTargets(_renderTargetView, null);
-            _context.OMSetDepthStencilState(null, 0);
-
-            // Включаем шейдеры КОСМОСА
-            _context.VSSetShader(_spaceVertexShader);
-            _context.PSSetShader(_spacePixelShader);
-
-            _context.IASetInputLayout(null);
-            _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
-
-            // Рисуем фоновый прямоугольник
-            _context.Draw(4, 0);
-        }
 
         public void LoadShaders()
         {
@@ -283,12 +264,6 @@ namespace Geo.Core
             _vertexShader = _device.CreateVertexShader(vsBlob.AsBytes());
             Compiler.CompileFromFile("Shaders/PixelShader.hlsl", "main", "ps_5_0", out Blob psBlob, out _);
             _pixelShader = _device.CreatePixelShader(psBlob.AsBytes());
-
-            // Космос (Новое)
-            Compiler.CompileFromFile("Shaders/SpaceVertexShader.hlsl", "main", "vs_5_0", out Blob spaceVsBlob, out _);
-            _spaceVertexShader = _device.CreateVertexShader(spaceVsBlob.AsBytes());
-            Compiler.CompileFromFile("Shaders/SpacePixelShader.hlsl", "main", "ps_5_0", out Blob spacePsBlob, out _);
-            _spacePixelShader = _device.CreatePixelShader(spacePsBlob.AsBytes());
 
             // Layout привязываем к вершинному шейдеру Земли, так как у космоса нет Layout (мы рисуем его без буфера вершин)
             InputElementDescription[] inputElements = new InputElementDescription[]
@@ -301,8 +276,6 @@ namespace Geo.Core
             // Освобождаем временные буферы компиляции из оперативной памяти
             vsBlob.Dispose();
             psBlob.Dispose();
-            spaceVsBlob.Dispose();
-            spacePsBlob.Dispose();
 
             Console.WriteLine("[Engine]: Шейдеры успешно скомпилированы и загружены в GPU.");
         }

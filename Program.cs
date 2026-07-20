@@ -97,8 +97,8 @@ class Program
             // 3. Рендеринг кадра
             engine.BeginFrame();
 
-            // 4. Рисуем космос (он сам знает, какие шейдеры включить)
-            engine.DrawBackground();
+            // 4. Рисуем космос
+            //engine.DrawBackground();
 
             // 5. Рисуем Землю
             if (planetVertexBuffer != null && planetIndexBuffer != null && earthTexture != null)
