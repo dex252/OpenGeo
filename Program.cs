@@ -11,6 +11,7 @@ class Program
     private static GraphicsEngine engine;
     private static ID3D11Buffer planetVertexBuffer;
     private static ID3D11Buffer planetIndexBuffer;
+    private static ID3D11Buffer cameraConstantBuffer;
     private static int planetIndexCount;
     private static Texture earthTexture;
 
@@ -77,6 +78,14 @@ class Program
         planetIndexCount = earthIndices.Length;
         (planetVertexBuffer, planetIndexBuffer) = engine.CreateMeshBuffers(earthVertices, earthIndices);
 
+        var cameraBufferDesc = new BufferDescription
+        {
+            Usage = ResourceUsage.Default,
+            ByteWidth = 16, // Минимальный размер буфера в DirectX 11 должен быть кратен 16 байтам
+            BindFlags = BindFlags.ConstantBuffer
+        };
+        cameraConstantBuffer = engine.Device.CreateBuffer(cameraBufferDesc);
+
         // После создания буферов самой Земли:
         worldRenderer = new Geo.Graphics.GameWorldRenderer(engine);
 
@@ -114,6 +123,15 @@ class Program
             // 1. Обновляем состояние камеры (пересчет матриц, если мышь двигалась)
             camera.Update(engine.Window);
 
+            // Забираем текущий радиус из нашей камеры
+            float currentRadius = camera.CurrentRadius;
+
+            // Создаем массив данных для отправки (DirectX требует кратность 4 флоатам, поэтому дополняем нулями)
+            float[] cameraData = new float[] { currentRadius, 0.0f, 0.0f, 0.0f };
+
+            // Обновляем константный буфер на видеокарте
+            engine.Device.ImmediateContext.UpdateSubresource(cameraData, cameraConstantBuffer);
+
             // Обновление симуляции
             worldSimulation.Update(elapsedTimeMs / 1000.0);
 
@@ -137,6 +155,8 @@ class Program
                 // Метод BindMesh сам включит шейдеры Земли, текстуру и буферы
                 engine.BindMesh(planetVertexBuffer, planetIndexBuffer, earthTexture.ResourceView);
 
+                engine.Device.ImmediateContext.PSSetConstantBuffer(1, cameraConstantBuffer);
+
                 // Передаем текстуру текста в слот 1 пиксельного шейдера планеты
                 engine.Device.ImmediateContext.PSSetShaderResource(1, cityTextTexture.ResourceView);
 
@@ -152,6 +172,7 @@ class Program
         // Очистка памяти GPU
         planetVertexBuffer?.Dispose();
         planetIndexBuffer?.Dispose();
+        cameraConstantBuffer?.Dispose();
 
         worldRenderer?.Dispose();
 

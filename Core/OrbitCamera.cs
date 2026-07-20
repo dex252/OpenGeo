@@ -9,7 +9,7 @@ namespace Geo.Core
     {
         // --- КОНСТАНТЫ НАСТРОЙКИ КАМЕРЫ ---
         private const float BASE_SENSITIVITY = 0.005f; // Базовая чувствительность мыши
-        private const float ZOOM_SENSITIVITY = 0.3f;   // Скорость зума при прокрутке колесика
+        private const float ZOOM_SENSITIVITY = 0.1f;   // Скорость зума при прокрутке колесика
 
         // Ваша новая настроенная дистанция
         private const float MIN_RADIUS = 2.5f;         // Максимальное приближение к Земле
@@ -30,6 +30,8 @@ namespace Geo.Core
 
         public Matrix4x4 ViewMatrix { get; private set; }
         public Matrix4x4 ProjectionMatrix { get; private set; }
+        public float CurrentRadius => _radius;
+
 
         public OrbitCamera(IWindow window)
         {
