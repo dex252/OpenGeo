@@ -260,9 +260,9 @@ namespace Geo.Core
         public void LoadShaders()
         {
             // Земля
-            Compiler.CompileFromFile("Shaders/VertexShader.hlsl", "main", "vs_5_0", out Blob vsBlob, out _);
+            Compiler.CompileFromFile("Shaders/Planet/VertexShader.hlsl", "main", "vs_5_0", out Blob vsBlob, out _);
             _vertexShader = _device.CreateVertexShader(vsBlob.AsBytes());
-            Compiler.CompileFromFile("Shaders/PixelShader.hlsl", "main", "ps_5_0", out Blob psBlob, out _);
+            Compiler.CompileFromFile("Shaders/Planet/PixelShader.hlsl", "main", "ps_5_0", out Blob psBlob, out _);
             _pixelShader = _device.CreatePixelShader(psBlob.AsBytes());
 
             // Layout привязываем к вершинному шейдеру Земли, так как у космоса нет Layout (мы рисуем его без буфера вершин)

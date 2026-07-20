@@ -1,9 +1,10 @@
-﻿using System;
-using System.Numerics;
-using Vortice.Direct3D11;
-using Geo.Core;
+﻿using Geo.Core;
+using Geo.Gameplay.Services;
 using Geo.Graphics;
 using Geo.Math;
+using System;
+using System.Numerics;
+using Vortice.Direct3D11;
 
 class Program
 {
@@ -13,8 +14,17 @@ class Program
     private static int planetIndexCount;
     private static Texture earthTexture;
 
+    private static WorldSimulation worldSimulation;
+
     // Ссылка на наш новый изолированный класс камеры
     private static OrbitCamera camera;
+
+    //private static Vector3 cityPosition;
+    //private static ID3D11Buffer cityVertexBuffer;
+    //private static ID3D11Buffer cityIndexBuffer;
+    //private static int cityIndexCount;
+
+    private static Geo.Graphics.GameWorldRenderer worldRenderer;
 
     static void Main(string[] args)
     {
@@ -36,7 +46,11 @@ class Program
         // Инициализируем камеру, передавая ей наше готовое окно Silk.NET
         camera = new OrbitCamera(engine.Window);
 
+        // Инициализируем симуляцию мира (передаем радиус сферы 2.0f)
+        worldSimulation = new WorldSimulation(2.0f);
+
         engine.LoadShaders();
+        
 
         // Загружаем текстуру Земли
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -56,10 +70,13 @@ class Program
             return;
         }
 
-        // Расчет и создание буферов сферы
-        var (vertices, indices) = SphereGenerator.Generate(2.0f, 40, 40);
-        planetIndexCount = indices.Length;
-        (planetVertexBuffer, planetIndexBuffer) = engine.CreateMeshBuffers(vertices, indices);
+        // Создаем буферы для Земли (это у вас уже написано)
+        var (earthVertices, earthIndices) = SphereGenerator.Generate(2.0f, 40, 40);
+        planetIndexCount = earthIndices.Length;
+        (planetVertexBuffer, planetIndexBuffer) = engine.CreateMeshBuffers(earthVertices, earthIndices);
+
+        // После создания буферов самой Земли:
+        worldRenderer = new Geo.Graphics.GameWorldRenderer(engine);
 
         // Таймер ограничения кадров
         double targetFps = 60.0;
@@ -89,6 +106,9 @@ class Program
             // 1. Обновляем состояние камеры (пересчет матриц, если мышь двигалась)
             camera.Update(engine.Window);
 
+            // Обновление симуляции
+            worldSimulation.Update(elapsedTimeMs / 1000.0);
+
             // 2. Рассчитываем итоговую матрицу (Земля неподвижна Identity, камеры берутся из класса)
             Matrix4x4 world = Matrix4x4.Identity;
             Matrix4x4 wvp = world * camera.ViewMatrix * camera.ProjectionMatrix;
@@ -109,6 +129,9 @@ class Program
                 // Метод BindMesh сам включит шейдеры Земли, текстуру и буферы
                 engine.BindMesh(planetVertexBuffer, planetIndexBuffer, earthTexture.ResourceView);
                 engine.Draw(planetIndexCount);
+
+                //Отрисовка городов
+                worldRenderer.Render(worldSimulation, camera);
             }
 
             engine.EndFrame();
@@ -117,9 +140,13 @@ class Program
         // Очистка памяти GPU
         planetVertexBuffer?.Dispose();
         planetIndexBuffer?.Dispose();
+
+        worldRenderer?.Dispose();
+
         earthTexture?.Dispose();
         engine.Dispose();
 
         Console.WriteLine("[Система]: Работа программы успешно завершена.");
     }
+
 }
