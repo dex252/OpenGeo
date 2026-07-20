@@ -14,6 +14,8 @@ class Program
     private static int planetIndexCount;
     private static Texture earthTexture;
 
+    private static Texture cityTextTexture;
+
     private static WorldSimulation worldSimulation;
 
     // Ссылка на наш новый изолированный класс камеры
@@ -78,6 +80,12 @@ class Program
         // После создания буферов самой Земли:
         worldRenderer = new Geo.Graphics.GameWorldRenderer(engine);
 
+        // Генерируем PNG картинку с текстом под разрешение вашей карты (например, 4096х2048)
+        string textLayerPath = Geo.Graphics.TextAtlasGenerator.GenerateCityTextLayer(worldSimulation, 4096, 2048, 14.0f);
+
+        // Загружаем её в видеопамять как вторую текстуру
+        cityTextTexture = new Texture(engine.Device, textLayerPath);
+
         // Таймер ограничения кадров
         double targetFps = 60.0;
         double targetFrameTimeMs = 1000.0 / targetFps;
@@ -128,6 +136,10 @@ class Program
 
                 // Метод BindMesh сам включит шейдеры Земли, текстуру и буферы
                 engine.BindMesh(planetVertexBuffer, planetIndexBuffer, earthTexture.ResourceView);
+
+                // Передаем текстуру текста в слот 1 пиксельного шейдера планеты
+                engine.Device.ImmediateContext.PSSetShaderResource(1, cityTextTexture.ResourceView);
+
                 engine.Draw(planetIndexCount);
 
                 //Отрисовка городов
@@ -144,6 +156,8 @@ class Program
         worldRenderer?.Dispose();
 
         earthTexture?.Dispose();
+        cityTextTexture?.Dispose();
+
         engine.Dispose();
 
         Console.WriteLine("[Система]: Работа программы успешно завершена.");
